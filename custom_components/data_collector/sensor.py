@@ -10,8 +10,7 @@ from numpy import isin
 import requests
 import json
 import zlib
-import scrubadub, scrubadub_spacy
-
+import scrubadub
 from homeassistant.components.data_collector.const import TIME_INTERVAL
 from homeassistant.components.recorder import history
 
