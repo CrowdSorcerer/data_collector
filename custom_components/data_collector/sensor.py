@@ -1,65 +1,255 @@
 """Data collection service for smart home data crowsourcing."""
 import bz2
-from copyreg import pickle
+import copy
 from datetime import timedelta
 import logging
-import lzma
-from sys import api_version
+import os
+import regex as re
 import sys
-import time
+from numpy import isin
 import requests
 import json
 import zlib
-import uuid
+import scrubadub, scrubadub_spacy
 
-import async_timeout
-from homeassistant import config_entries
-from homeassistant.components import sensor
 from homeassistant.components.data_collector.const import TIME_INTERVAL
 from homeassistant.components.recorder import history
-from homeassistant.components.recorder.util import session_scope
 
 from homeassistant.config_entries import ConfigEntry
 
-# from homeassistant.const import ()
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import config_validation as ConfigType, entity_registry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as ConfigType
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.helpers.entity import Entity
 
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import Throttle
 
-# from homeassistant.components.history import HistoryPeriodView
 from homeassistant.util import dt as dt_util
-from .const import BLACKLIST, DOMAIN, API_URL
+from .const import API_URL
 
 _LOGGER = logging.getLogger(__name__)
 
 SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({})
+PT_NAME_LIST = [
+    {
+        "match": name.strip("\n"),
+        "filth_type": "name",
+        "ignore_case": True,
+        "ignore_partial_word_matches": True,
+    }
+    for name in open(os.path.join(os.path.dirname(__file__), "pt_names.txt"), "r+")
+]
+EN_NAME_LIST = [
+    {
+        "match": name.strip("\n"),
+        "filth_type": "name",
+        "ignore_case": True,
+        "ignore_partial_word_matches": True,
+    }
+    for name in open(os.path.join(os.path.dirname(__file__), "en_names.txt"), "r+")
+]
+
+PT_LOCATION_LIST = [
+    {
+        "match": name.strip("\n"),
+        "filth_type": "name",
+        "ignore_case": True,
+        "ignore_partial_word_matches": True,
+    }
+    for name in open(os.path.join(os.path.dirname(__file__), "locations_pt.txt"), "r+")
+]
+COUNTRY_LIST = [
+    {
+        "match": name.strip("\n"),
+        "filth_type": "name",
+        "ignore_case": True,
+        "ignore_partial_word_matches": True,
+    }
+    for name in open(os.path.join(os.path.dirname(__file__), "countries.txt"), "r+")
+]
+# CUSTOM_FILTER = [{"match": ', "user_id', "filth_type": "name", "match_end": ","}]
+
+FILTERS = EN_NAME_LIST + PT_NAME_LIST  #  + CUSTOM_FILTER
+FILTERED_KEYS = ["user_id", "last_changed", "last_updated"]
 
 
-async def compress_data_zlib(data):
+class PIIReplacer(scrubadub.post_processors.PostProcessor):
+
+    name = "pii_replacer"
+
+    def process_filth(self, filth_list):
+
+        for filth in filth_list:
+            filth.replacement_string = "REDACTED"
+
+        return filth_list
+
+
+async def compress_data(data):
     bdata = data.encode("utf-8")
     return zlib.compress(bdata)
 
 
-async def compress_data_bz2(data):
-    bdata = data.encode("utf-8")
-    return bz2.compress(bdata)
+async def filter_data(data):
+    async def custom_filter_keys(data):
+        if isinstance(data, dict):
+            for key in data:
 
+                if not isinstance(data[key], str):
+                    if isinstance(data[key], dict):
 
-async def compress_data_lzma(data):
-    bdata = data.encode("utf-8")
-    return lzma.compress(bdata)
+                        await custom_filter_keys(data[key])
+                    if isinstance(data[key], list):
+                        for el in data[key]:
+                            await custom_filter_keys(el)
+                else:
+
+                    if key in FILTERED_KEYS:
+                        # print("redacting")
+                        data[key] = "{{REDACTED}}"
+        else:
+            if isinstance(data, list):
+                for it in data:
+
+                    await custom_filter_keys(it)
+            else:
+
+                if data in FILTERED_KEYS:
+                    print("redacting")
+                    data[key] = """{{REDACTED}}"""
+        return data
+
+    async def sanitize(data, to_replace):
+        if isinstance(data, dict):
+            for key in data:
+                if key.contains(":"):
+                    to_replace[key] = key.replace(":", "_")
+
+                if not isinstance(data[key], str):
+                    if isinstance(data[key], dict):
+                        if data[key].contains(":"):
+
+                            to_replace[data[key]] = data[key].replace(":", "_")
+
+                        await sanitize(data[key], to_replace)
+                    if isinstance(data[key], list):
+                        for el in data[key]:
+                            if el.contains(":"):
+                                to_replace[el] = el.replace(":", "_")
+
+                            await sanitize(el, to_replace)
+                else:
+                    if el.contains(":"):
+                        to_replace[el] = el.replace(":", "_")
+        else:
+            if isinstance(data, list):
+                for it in data:
+                    if el.contains(":"):
+                        to_replace[el] = el.replace(":", "_")
+
+                    await sanitize(it, to_replace)
+            else:
+                if el.contains(":"):
+                    to_replace[el] = el.replace(":", "_")
+
+        return to_replace
+
+    def custom_filter_reg():
+        ip = "/^[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+$/"
+        postal_PT = "\d{4}([\-]\d{3})?"
+
+    # For filter testing (checks if working in nested lists/dicts)
+    ## meantest = [
+    #    {
+    #        "eter": [
+    #            {"a": "aaaa"},
+    #            {
+    #                "user_id": "asd",
+    #                "test": {
+    #                    "user_id": "das",
+    #                    "tertert": [
+    #                        {"user_id": "dasdasd"},
+    #                        {"asdasd": {"asdasd": "2324", "user_id": "234245456"}},
+    #                    ],
+    #                },
+    #            },
+    #        ]
+    #    }
+    # ]
+
+    # it = (
+    #                    it.replace(".", "_")
+    #                    .replace("<", "_")
+    #                    .replace(">", "_")
+    #                    .replace("*", "_")
+    #                    .replace("#", "_")
+    #                    .replace("%", "_")
+    #                    .replace("&", "_")
+    #                    .replace(":", "_")
+    #                    .replace("\\\\", "_")
+    #                    .replace("+", "_")
+    #                    .replace("?", "_")
+    #                    .replace("/", "_")
+    #                )
+
+    data = await custom_filter_keys(data)
+    # print("data before scrub")
+    # print(data)
+    scrubber = scrubadub.Scrubber(post_processor_list=[PIIReplacer()])
+
+    test = {
+        "name": "Joseph Joestar",
+        "postal_code": "1234-254",
+        "tt": "@handlegoesheere",
+        "ph": "3518844228",
+    }
+
+    scrubber.add_detector(scrubadub.detectors.UserSuppliedFilthDetector(FILTERS))
+
+    # TODO Check if we can use this detector -> dependency has a
+    # v e r y large file size!
+    # scrubber.add_detector(scrubadub_spacy.detectors.AddressDetector)
+    data = scrubber.clean(json.dumps(data))
+
+    data = (
+        data.replace(".", "_")
+        .replace("<", "_")
+        .replace(">", "_")
+        .replace("*", "_")
+        .replace(".", "_")
+        .replace("#", "_")
+        .replace("%", "_")
+        .replace("&", "_")
+        .replace("\\\\", "_")
+        .replace("+", "_")
+        .replace("?", "_")
+        .replace("/", "_")
+    )
+    print(data)
+
+    data = data.replace(" _ ", ":")
+    data = re.sub("(?<=\d)_(?=\d)", ".", data)
+
+    print("replaced")
+    print(data)
+    data = json.loads(data)
+    # to_replace = await sanitize(data, {})
+    print("CLEANED UP")
+    print(data)
+    print("to repl:")
+    #    print(to_replace)
+
+    return data
 
 
 def send_data_to_api(local_data, user_uuid):
     api_url = API_URL  # TODO : gib url
-    # print(user_uuid)
+    print("\nSENDING DATA\n\n")
+    print(user_uuid)
     if user_uuid == None:
         return
     r = requests.post(
@@ -68,7 +258,7 @@ def send_data_to_api(local_data, user_uuid):
         verify=False,
         headers={"Home-UUID": user_uuid, "Content-Type": "application/octet-stream"},
     )
-    # print(r.text)
+    print(r.text)
 
 
 async def async_setup_platform(
@@ -168,38 +358,17 @@ class Collector(Entity):
         print(sensor_data)
 
         # json_data = json.dumps(sensor_data.as_dict())
-        json_data = json.dumps(sensor_data)
+        filtered = await filter_data(sensor_data)
+
+        json_data = json.dumps(filtered)
 
         # end = time.time()
         print(f"Size before compression: {sys.getsizeof(json_data)}")
         # start = time.time()
-        compressed = await compress_data_zlib(json_data)
-        # end = time.time()
-        #
-        # print(f"zlib - Size after compression: {sys.getsizeof(compressed)}")
-        # print(end - start)
-        #
-        # start = time.time()
-        #
-        # compressed = await compress_data_bz2(json_data)
-        # end = time.time()
-        #
-        # print(f"bz2 - Size after compression: {sys.getsizeof(compressed)}")
-        # print(end - start)
-        #
-        # start = time.time()
-        #
-        # compressed = await compress_data_lzma(json_data)
-        # end = time.time()
-        #
-        # print(f"lzma - Size after compression: {sys.getsizeof(compressed)}")
-        # print(end - start)
-
+        compressed = await compress_data(json_data)
         # TODO: check for sensitive information in attributes
-
-        # TODO: send data to API
-        # TODO : uncomment this later \/
-
+        print("DAta type:")
+        print(type(compressed))
         await self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
 
     # await send_data_to_api(compressed)
