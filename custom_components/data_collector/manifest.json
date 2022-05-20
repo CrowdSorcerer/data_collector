@@ -4,8 +4,7 @@
   "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/data_collector",
   "requirements": [
-    "scrubadub",
-    "scrubadub_spacy"
+    "scrubadub"
   ],
   "ssdp": [],
   "zeroconf": [],
