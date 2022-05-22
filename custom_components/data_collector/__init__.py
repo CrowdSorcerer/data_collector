@@ -4,7 +4,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
+from .const import DOMAIN, logger
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
@@ -12,6 +12,7 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Crowdsourcerer from a config entry."""
     hass.config_entries.async_setup_platforms(entry, PLATFORMS)
+    logger.warn("\n\n Data Collector is being init\n\n")
 
     return True
 
