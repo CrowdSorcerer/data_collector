@@ -1,8 +1,8 @@
 """Config flow for Crowdsourcerer integration."""
 from __future__ import annotations
 
-import logging
 from datetime import timedelta
+import logging
 from typing import Any
 import uuid
 
@@ -10,12 +10,12 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.components import history
+from homeassistant.const import CONF_NAME
+from homeassistant.core import callback
 
 # from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.const import CONF_NAME
-from homeassistant.core import callback
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, TIME_INTERVAL, logger
@@ -86,18 +86,6 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         errors = {}
 
-        # try:
-        #    info = await validate_input(self.hass, user_input)
-        # except CannotConnect:
-        #    errors["base"] = "cannot_connect"
-        # except InvalidAuth:
-        #    errors["base"] = "invalid_auth"
-        # except Exception:  # pylint: disable=broad-except
-        #    _LOGGER.exception("Unexpected exception")
-        #    errors["base"] = "unknown"
-        # else:
-        #    return self.async_create_entry(title=info["title"], data=user_input)
-
         if user_input is not None:
             print(f"user input: {user_input}")
             # if user_input[CONF_NAME] not in self.hass.config_entries.async_entries(
@@ -156,8 +144,9 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
                         print(f"cat: {category}")
                         if category == "uuid":
                             user_uuid = entry_d["data"][category]
-                        break
+                            break
             user_input["uuid"] = user_uuid
+
             self.hass.config_entries.async_update_entry(old_entry, data=user_input)
             return self.async_create_entry(title="options", data=user_input)
 
