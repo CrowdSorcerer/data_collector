@@ -12,7 +12,6 @@ import requests
 import scrubadub
 
 
-from homeassistant.components.data_collector.const import TIME_INTERVAL
 from homeassistant.components.recorder import history
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.config_entries import ConfigEntry
@@ -23,7 +22,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import Throttle, dt as dt_util
 
-from .const import API_URL
+from .const import API_URL, TIME_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -243,18 +242,22 @@ async def filter_data(data):
 
 
 def send_data_to_api(local_data, user_uuid):
-    api_url = API_URL  # TODO : gib url
-    print("\nSENDING DATA\n\n")
-    print(user_uuid)
-    if user_uuid == None:
-        return
-    r = requests.post(
-        api_url,
-        data=local_data,
-        verify=False,
-        headers={"Home-UUID": user_uuid, "Content-Type": "application/octet-stream"},
-    )
-    print(r.text)
+    api_url = API_URL
+    if local_data != {}:
+        print("\nSENDING DATA\n\n")
+        print(user_uuid)
+        if user_uuid == None:
+            return
+        r = requests.post(
+            api_url,
+            data=local_data,
+            verify=False,
+            headers={
+                "Home-UUID": user_uuid,
+                "Content-Type": "application/octet-stream",
+            },
+        )
+        print(r.text)
 
 
 async def async_setup_platform(
