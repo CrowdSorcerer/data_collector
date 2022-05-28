@@ -5,6 +5,7 @@ from datetime import timedelta, datetime
 import logging
 import os
 import sys
+from threading import local
 import zlib
 
 import regex as re
@@ -243,7 +244,9 @@ async def filter_data(data):
 
 def send_data_to_api(local_data, user_uuid):
     api_url = API_URL
-    if local_data != {} and local_data != "{}":
+    print("AAAAAAAAA")
+    print(type(local_data))
+    if local_data != {} and local_data != b"{}" and local_data != "{}":
         print("\nSENDING DATA\n\n")
         print(user_uuid)
         if user_uuid == None:
