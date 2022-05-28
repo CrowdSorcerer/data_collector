@@ -12,7 +12,7 @@ import requests
 import scrubadub
 
 
-from homeassistant.components.recorder import history
+from homeassistant.components.recorder.history import state_changes_during_period
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -243,7 +243,7 @@ async def filter_data(data):
 
 def send_data_to_api(local_data, user_uuid):
     api_url = API_URL
-    if local_data != {}:
+    if local_data != {} and local_data != "{}":
         print("\nSENDING DATA\n\n")
         print(user_uuid)
         if user_uuid == None:
@@ -345,9 +345,7 @@ class Collector(Entity):
 
         print(f"Disallow List: {disallowed}")
         start_date = dt_util.utcnow() - SCAN_INTERVAL
-        raw_data = history.state_changes_during_period(
-            start_time=start_date, hass=self.hass
-        )
+        raw_data = state_changes_during_period(start_time=start_date, hass=self.hass)
 
         sensor_data = {}
 
@@ -402,6 +400,6 @@ class Collector(Entity):
         print("current entity uuid:", self._attr_extra_state_attributes["uuid"])
         print("last sent data:", self._attr_extra_state_attributes["last_sent_data"])
 
-        await self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
+        self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
 
     # await send_data_to_api(compressed)
