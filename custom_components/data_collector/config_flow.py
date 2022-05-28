@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import functools
 import logging
 from typing import Any
 import uuid
@@ -63,8 +64,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             start_date = dt_util.utcnow() - SCAN_INTERVAL
 
-            raw_data = recorder.get_instance(self.hass).async_add_executor_job(
-                state_changes_during_period, start_time=start_date, hass=self.hass
+            raw_data = await recorder.get_instance(self.hass).async_add_executor_job(
+                functools.partial(
+                    state_changes_during_period, start_time=start_date, hass=self.hass
+                )
             )
             sensor_data = {}
 
@@ -153,8 +156,10 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
 
         start_date = dt_util.utcnow() - SCAN_INTERVAL
 
-        raw_data = recorder.get_instance(self.hass).async_add_executor_job(
-            state_changes_during_period, start_time=start_date, hass=self.hass
+        raw_data = await recorder.get_instance(self.hass).async_add_executor_job(
+            functools.partial(
+                state_changes_during_period, start_time=start_date, hass=self.hass
+            )
         )
         sensor_data = {}
 

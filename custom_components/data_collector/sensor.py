@@ -1,5 +1,6 @@
 """Data collection service for smart home data crowdsourcing."""
 
+import functools
 import json
 from datetime import timedelta, datetime
 import logging
@@ -12,6 +13,7 @@ import regex as re
 import requests
 import scrubadub
 
+import homeassistant.components.recorder as recorder
 
 from homeassistant.components.recorder.history import state_changes_during_period
 from homeassistant.components.sensor import PLATFORM_SCHEMA
@@ -348,8 +350,11 @@ class Collector(Entity):
 
         print(f"Disallow List: {disallowed}")
         start_date = dt_util.utcnow() - SCAN_INTERVAL
-        raw_data = state_changes_during_period(start_time=start_date, hass=self.hass)
-
+        raw_data = await recorder.get_instance(self.hass).async_add_executor_job(
+            functools.partial(
+                state_changes_during_period, start_time=start_date, hass=self.hass
+            )
+        )
         sensor_data = {}
 
         filtered_data = raw_data.copy()
