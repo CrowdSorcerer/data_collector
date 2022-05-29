@@ -387,6 +387,10 @@ class Collector(Entity):
 
         self._attr_extra_state_attributes["last_sent_data"] = filtered
 
+        logger.warn("\n\n Data Collector will send this filtered data:\n\n")
+
+        logger.warn(filtered)
+
         json_data = json.dumps(filtered)
 
         # end = time.time()
