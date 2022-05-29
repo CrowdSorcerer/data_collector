@@ -25,7 +25,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import Throttle, dt as dt_util
 
-from .const import API_URL, TIME_INTERVAL
+from .const import API_URL, TIME_INTERVAL, logger
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -328,6 +328,8 @@ class Collector(Entity):
     async def async_update(self):
         """Main execution flow"""
 
+        logger.warn("\n\n Data Collector do be collectin'\n\n")
+
         disallowed = []
         entries = self.hass.config_entries.async_entries()
         for entry in entries:
@@ -375,7 +377,9 @@ class Collector(Entity):
 
         # print(filtered_data)
         print(sensor_data)
+        logger.warn("\n\n Data Collector will send this data:\n\n")
 
+        logger.warn(sensor_data)
         # json_data = json.dumps(sensor_data.as_dict())
         filtered = await filter_data(sensor_data)
 
