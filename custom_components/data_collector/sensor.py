@@ -381,6 +381,8 @@ class Collector(Entity):
 
         logger.warn(sensor_data)
         # json_data = json.dumps(sensor_data.as_dict())
+        logger.warn("\n\n Data Collector is now Filtering the data\n\n")
+
         filtered = await filter_data(sensor_data)
 
         self._attr_extra_state_attributes["last_sent_data"] = filtered
@@ -390,6 +392,8 @@ class Collector(Entity):
         # end = time.time()
         print(f"Size before compression: {sys.getsizeof(json_data)}")
         # start = time.time()
+        logger.warn("\n\n Data Collector is now Compressing the data\n\n")
+
         compressed = await compress_data(json_data)
         # TODO: check for sensitive information in attributes
         print("DAta type:")
@@ -411,6 +415,7 @@ class Collector(Entity):
 
         print("current entity uuid:", self._attr_extra_state_attributes["uuid"])
         print("last sent data:", self._attr_extra_state_attributes["last_sent_data"])
+        logger.warn("\n\n Data Collector is now Sending the data\n\n")
 
         self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
 
