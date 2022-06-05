@@ -6,24 +6,28 @@ from datetime import timedelta, datetime
 import logging
 import os
 import sys
-from threading import local
 import zlib
-
+from time import time
 import regex as re
 import requests
 import scrubadub
+from scrubadub.filth.postalcode import PostalCodeFilth
+from random import randint
 
 import homeassistant.components.recorder as recorder
 
 from homeassistant.components.recorder.history import state_changes_during_period
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as ConfigType
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import Throttle, dt as dt_util
+from homeassistant.helpers.event import (
+    async_track_time_change,
+)
 
 from .const import API_URL, TIME_INTERVAL, logger
 
@@ -56,7 +60,6 @@ PT_LOCATION_LIST = [
         "match": name.strip("\n"),
         "filth_type": "name",
         "ignore_case": True,
-        "ignore_partial_word_matches": True,
     }
     for name in open(os.path.join(os.path.dirname(__file__), "locations_pt.txt"), "r+")
 ]
@@ -69,150 +72,85 @@ COUNTRY_LIST = [
     }
     for name in open(os.path.join(os.path.dirname(__file__), "countries.txt"), "r+")
 ]
-# CUSTOM_FILTER = [{"match": ', "user_id', "filth_type": "name", "match_end": ","}]
+CUSTOM_BLACKLIST = [
+    {
+        "match": name.strip("\n"),
+        "filth_type": "name",
+        "ignore_case": True,
+        "ignore_partial_word_matches": True,
+    }
+    for name in open(
+        os.path.join(os.path.dirname(__file__), "custom_blacklist.txt"), "r+"
+    )
+]
 
-FILTERS = EN_NAME_LIST + PT_NAME_LIST  #  + CUSTOM_FILTER
-FILTERED_KEYS = ["user_id", "last_changed", "last_updated"]
+FILTERS = (
+    EN_NAME_LIST + PT_NAME_LIST + COUNTRY_LIST + CUSTOM_BLACKLIST + PT_LOCATION_LIST
+)  # + PT_LOCATION_LIST TODO : THIS IS THE GUILTY BASTARD - FIND OUT WHY IT NOT WORKING - MAYBE MULTIPLE WORDS PER LINE?
+
+FILTERED_KEYS = ["user_id", "latitude", "longitude", "lon", "lat"]
 
 
 class PIIReplacer(scrubadub.post_processors.PostProcessor):
-
     name = "pii_replacer"
 
     def process_filth(self, filth_list):
-
         for filth in filth_list:
-            filth.replacement_string = "REDACTED"
-
+            filth.replacement_string = "{{REDACTED}}"
         return filth_list
 
 
 async def compress_data(data):
-    bdata = data.encode("utf-8")
-    return zlib.compress(bdata)
+    return zlib.compress(data.encode("utf-8"))
 
 
 async def filter_data(data):
+    """Filters PII from the data collected"""
+
     async def custom_filter_keys(data):
+        """Filters based on key names"""
         if isinstance(data, dict):
             for key in data:
+                if key in FILTERED_KEYS:
+                    data[key] = "{{REDACTED}}"
+                if isinstance(data[key], (dict, list)):
+                    await custom_filter_keys(data[key])
 
-                if not isinstance(data[key], str):
-                    if isinstance(data[key], dict):
+        elif isinstance(data, list):
+            for it in data:
+                await custom_filter_keys(it)
 
-                        await custom_filter_keys(data[key])
-                    if isinstance(data[key], list):
-                        for el in data[key]:
-                            await custom_filter_keys(el)
-                else:
-
-                    if key in FILTERED_KEYS:
-                        # print("redacting")
-                        data[key] = "{{REDACTED}}"
-        else:
-            if isinstance(data, list):
-                for it in data:
-
-                    await custom_filter_keys(it)
-            else:
-
-                if data in FILTERED_KEYS:
-                    print("redacting")
-                    data[key] = """{{REDACTED}}"""
         return data
 
-    async def sanitize(data, to_replace):
-        if isinstance(data, dict):
-            for key in data:
-                if key.contains(":"):
-                    to_replace[key] = key.replace(":", "_")
-
-                if not isinstance(data[key], str):
-                    if isinstance(data[key], dict):
-                        if data[key].contains(":"):
-
-                            to_replace[data[key]] = data[key].replace(":", "_")
-
-                        await sanitize(data[key], to_replace)
-                    if isinstance(data[key], list):
-                        for el in data[key]:
-                            if el.contains(":"):
-                                to_replace[el] = el.replace(":", "_")
-
-                            await sanitize(el, to_replace)
-                else:
-                    if el.contains(":"):
-                        to_replace[el] = el.replace(":", "_")
-        else:
-            if isinstance(data, list):
-                for it in data:
-                    if el.contains(":"):
-                        to_replace[el] = el.replace(":", "_")
-
-                    await sanitize(it, to_replace)
-            else:
-                if el.contains(":"):
-                    to_replace[el] = el.replace(":", "_")
-
-        return to_replace
-
-    def custom_filter_reg():
-        ip = r"/^[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+$/"
-        postal_PT = r"\d{4}([\-]\d{3})?"
-
-    # For filter testing (checks if working in nested lists/dicts)
-    ## meantest = [
-    #    {
-    #        "eter": [
-    #            {"a": "aaaa"},
-    #            {
-    #                "user_id": "asd",
-    #                "test": {
-    #                    "user_id": "das",
-    #                    "tertert": [
-    #                        {"user_id": "dasdasd"},
-    #                        {"asdasd": {"asdasd": "2324", "user_id": "234245456"}},
-    #                    ],
-    #                },
-    #            },
-    #        ]
-    #    }
-    # ]
-
-    # it = (
-    #                    it.replace(".", "_")
-    #                    .replace("<", "_")
-    #                    .replace(">", "_")
-    #                    .replace("*", "_")
-    #                    .replace("#", "_")
-    #                    .replace("%", "_")
-    #                    .replace("&", "_")
-    #                    .replace(":", "_")
-    #                    .replace("\\\\", "_")
-    #                    .replace("+", "_")
-    #                    .replace("?", "_")
-    #                    .replace("/", "_")
-    #                )
-
-    data = await custom_filter_keys(data)
-    # print("data before scrub")
-    # print(data)
-    scrubber = scrubadub.Scrubber(post_processor_list=[PIIReplacer()])
+    def custom_filter_reg(data):
+        """Filters based on Regex Expressions"""
+        data = re.sub(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", "{{REDACTED}}", data)
+        data = re.sub(r"\d{4}[\-]\d{3}", "{{REDACTED}}", data)
+        return data
 
     test = {
         "name": "Joseph Joestar",
         "postal_code": "1234-254",
         "tt": "@handlegoesheere",
         "ph": "3518844228",
+        "ip": "127.0.0.1",
+        "longitude": "12.34564",
+        "latitude": "9328475.3",
+        "lon": "1234",
+        "lat": "984.2",
     }
 
-    scrubber.add_detector(scrubadub.detectors.UserSuppliedFilthDetector(FILTERS))
+    logger.info("Filtering out PII from data.")
+    await custom_filter_keys(data)
 
-    # TODO Check if we can use this detector -> dependency has a
-    # v e r y large file size!
-    # scrubber.add_detector(scrubadub_spacy.detectors.AddressDetector)
+    scrubber = scrubadub.Scrubber(post_processor_list=[PIIReplacer()])
+    scrubber.add_detector(scrubadub.detectors.UserSuppliedFilthDetector(FILTERS))
     data = scrubber.clean(json.dumps(data))
 
+    data = custom_filter_reg(data)
+
+    # Sanitizes data for the Data Lake
+    logger.info("Sanitizing the data for Data Lake consumption.")
     data = (
         data.replace(".", "_")
         .replace("<", "_")
@@ -227,42 +165,43 @@ async def filter_data(data):
         .replace("?", "_")
         .replace("/", "_")
     )
-    print(data)
-
     data = data.replace(" _ ", ":")
     data = re.sub(r"(?<=\d)_(?=\d)", ".", data)
-
-    print("replaced")
-    print(data)
     data = json.loads(data)
-    # to_replace = await sanitize(data, {})
-    print("CLEANED UP")
-    print(data)
-    print("to repl:")
-    #    print(to_replace)
-
     return data
 
 
 def send_data_to_api(local_data, user_uuid):
+    """Sends the data to remote Ingest API"""
     api_url = API_URL
-    print("AAAAAAAAA")
-    print(type(local_data))
-    if local_data != {} and local_data != b"{}" and local_data != "{}":
-        print("\nSENDING DATA\n\n")
-        print(user_uuid)
+
+    if (
+        local_data != {}
+        and local_data != b"{}"
+        and local_data != "{}"
+        and local_data != b"x\x9c\xab\xae\x05\x00\x01u\x00\xf9"  # I don't know anymore
+        and local_data != None
+    ):
         if user_uuid == None:
+            logger.error(
+                "UUID is null - Something's very wrong. Please reinstall the data collector and contact the codeowners!"
+            )
+
             return
+        data_size = sys.getsizeof(local_data)
+        logger.info("Data Collector is sending data. Size: %d", data_size)
         r = requests.post(
             api_url,
             data=local_data,
-            verify=False,
+            #            verify=False,
             headers={
                 "Home-UUID": user_uuid,
                 "Content-Type": "application/octet-stream",
             },
         )
-        print(r.text)
+        logger.info("Response: %d", r.status_code)
+    else:
+        logger.info("No data to send.")
 
 
 async def async_setup_platform(
@@ -283,15 +222,11 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Add sensor entity from a config_entry"""
-
-    # something = hass.data[DOMAIN][config_entry.data[""]]
-    # print(something)
-
     async_add_entities([Collector(hass)], True)
 
 
 class Collector(Entity):
-    """Entity for periodic data collection, anonimization and sending"""
+    """Entity for periodic data collection, anonimization and uploading"""
 
     def __init__(self, hass):
         super().__init__()
@@ -302,6 +237,21 @@ class Collector(Entity):
         self._available = True
         _LOGGER.debug("init")
         self.uuid = None
+        self.random_time = [randint(0, 6), randint(0, 59), randint(0, 59)]
+        schedule = async_track_time_change(
+            self.hass,
+            self.async_collect_data,
+            self.random_time[0],
+            self.random_time[1],
+            self.random_time[2],
+            # second=40,
+        )
+        logger.info(
+            "Data Collector will run at %dh %dmin %ds",
+            self.random_time[0],
+            self.random_time[1],
+            self.random_time[2],
+        )
 
     @property
     def name(self) -> str:
@@ -323,85 +273,83 @@ class Collector(Entity):
         """Return True if entity is available."""
         return self._available
 
-    # Ocasionally runs this code.
-    @Throttle(SCAN_INTERVAL)
-    async def async_update(self):
+    @callback
+    async def async_collect_data(self, *_):
         """Main execution flow"""
+        start = time()
 
-        logger.warn("\n\n Data Collector do be collectin'\n\n")
+        try:
+            self.last_ran
+        except AttributeError:
+            # Should only happen the very first time it's ran.
+            # Why not on init? It'd reset the time everytime HA was restarted.
+            # Like this we lose one cycle but persist through restarts.
+            self.last_ran = dt_util.start_of_local_day()
 
-        disallowed = []
+        logger.info("Data Collector is collecting data, This may take a little bit.")
+
+        allowed = []
         entries = self.hass.config_entries.async_entries()
         for entry in entries:
             entry = entry.as_dict()
-            # print(entry)
             if entry["domain"] == "data_collector" and entry["title"] == "options":
                 for category in entry["data"]:
-                    # print(f"cat: {category}")
                     if category == "uuid":
                         self.uuid = entry["data"][category]
                         self._attr_extra_state_attributes["uuid"] = entry["data"][
                             category
                         ]
-                        # print(f"Uuid is {self.uuid}")
-
-                    elif not entry["data"][category]:
-                        # print(f" filtering on {category}")
-                        disallowed.append(category)
+                    elif entry["data"][category]:
+                        allowed.append(category)
                 break
 
-        print(f"Disallow List: {disallowed}")
-        start_date = dt_util.utcnow() - SCAN_INTERVAL
+        if "None" in allowed:
+            logger.info("Data Collector is not collecting data due to user choices.")
+            return
+        elif "All" in allowed:
+            allowed = ["All"]
+            logger.info(
+                "Data Collector is collecting data from all sensors due to user choices."
+            )
+
+        logger.info(f"Sending data from the following goups: %s ", str(allowed))
+
+        start_date = self.last_ran
+
         raw_data = await recorder.get_instance(self.hass).async_add_executor_job(
             functools.partial(
                 state_changes_during_period, start_time=start_date, hass=self.hass
             )
         )
-        sensor_data = {}
 
+        sensor_data = {}
         filtered_data = raw_data.copy()
+
         for key in raw_data.keys():
-            if key.split(".")[0] in disallowed or key == f"sensor.{self._name.lower()}":
+            if (
+                key.split(".")[0] not in allowed and "All" not in allowed
+            ):  # and not key == f"sensor.{self._name.lower()}":
                 filtered_data.pop(key)
+
         for key, value in filtered_data.items():
             sensor_data[key] = [state.as_dict() for state in value]
 
-        # for key, value in raw_data.items():
-        #    # print(key, value)
-        #    lst = [key.find(s) for s in BLACKLIST]
-        #    # If one item on the list is not -1, then a blacklisted word was found
-        #    # TODO: check for sensitive information such as location data, names, etc
-        #    if lst.count(-1) != len(lst):
-        #        continue
-        #    sensor_data[key] = [state.as_dict() for state in value]
+        if sensor_data == {}:
+            logger.warn("No Data found for this time interval.")
+            return
 
-        # print(filtered_data)
-        print(sensor_data)
-        logger.warn("\n\n Data Collector will send this data:\n\n")
-
-        logger.warn(sensor_data)
-        # json_data = json.dumps(sensor_data.as_dict())
-        logger.warn("\n\n Data Collector is now Filtering the data\n\n")
+        with open(os.path.join(os.path.dirname(__file__), "unclean.json"), "w+") as f:
+            f.write(str(sensor_data))
 
         filtered = await filter_data(sensor_data)
 
-        self._attr_extra_state_attributes["last_sent_data"] = filtered
-
-        logger.warn("\n\n Data Collector will send this filtered data:\n\n")
-
-        logger.warn(filtered)
-
+        with open(os.path.join(os.path.dirname(__file__), "clean.json"), "w+") as f:
+            f.write(str(filtered))
         json_data = json.dumps(filtered)
+        self._attr_extra_state_attributes["last_sent_data"] = json_data
 
-        # end = time.time()
-        print(f"Size before compression: {sys.getsizeof(json_data)}")
-        # start = time.time()
-        logger.warn("\n\n Data Collector is now Compressing the data\n\n")
-
+        logger.info("Data Collector is cmpressing the data")
         compressed = await compress_data(json_data)
-        # TODO: check for sensitive information in attributes
-        print("DAta type:")
-        print(type(compressed))
 
         compressed_size = sys.getsizeof(compressed)
         self._attr_extra_state_attributes["last_sent_size"] = round(
@@ -417,10 +365,7 @@ class Collector(Entity):
         if "first_sent_date" not in self._attr_extra_state_attributes:
             self._attr_extra_state_attributes["first_sent_date"] = curr_day
 
-        print("current entity uuid:", self._attr_extra_state_attributes["uuid"])
-        print("last sent data:", self._attr_extra_state_attributes["last_sent_data"])
-        logger.warn("\n\n Data Collector is now Sending the data\n\n")
-
-        self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
-
-    # await send_data_to_api(compressed)
+        self.last_ran = dt_util.now()
+        await self.hass.async_add_executor_job(send_data_to_api, compressed, self.uuid)
+        end = time()
+        logger.info("Entire process took %d s", (end - start))
