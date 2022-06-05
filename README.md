@@ -11,7 +11,7 @@ For the best experience, pair this with the respective Dashboard Card available 
 First, you need to have HACS installed in your Home Assistant environment. More information [available here](https://hacs.xyz/docs/setup/prerequisites).
 
 #### 1 - Add repository to HACS
-<TODO>
+TODO
 
 #### 2 - Add Integration to Home Assistant
   This proceeds as any other integration.
@@ -27,4 +27,4 @@ Please keep in mind that the "None" and "All" options will override everything, 
   
 ##### You're done! 
   You can always change the configuration by returning to the "Devices & Services" screen and pressing "Configure" on the Crowdsourcerer integration.
-# WIP
+# WIP - Add images
