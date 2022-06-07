@@ -12,16 +12,21 @@ First, you need to have HACS installed in your Home Assistant environment. More 
 
 #### 1 - Add repository to HACS
   1. Open the HACS screen, via the sidebar.
+  
   ![image](https://user-images.githubusercontent.com/56603542/172457746-cadcd118-6d27-4a77-af87-ccd335320b82.png)
   2. Click on Integrations
+  
   ![image](https://user-images.githubusercontent.com/56603542/172458033-27bd09ef-b997-4482-993c-df9ee905f613.png)
   3. Click on 'Custom Repositories' (On Top Left⋮)
+  
   ![image](https://user-images.githubusercontent.com/56603542/172460056-d57a7a24-b1b5-4146-bfc8-7f1ba0313f0a.png)
   4. Insert the link for this repository in 'Repository' text box, and pick the 'Integration' category. Press Add.
   5. Press the big blue button "Explore & download repositories", and then search for data_collector or Crowdsourcerer. Select Crowdsourcerer, and then press "Download this repository with hacs"
+  
   ![image](https://user-images.githubusercontent.com/56603542/172461082-d75a8daa-5618-478f-91e6-21bb3e5911a5.png)
   6. Restart Home Assistant (this can be done via Settings -> System->Restart (top right))
   7. Head on to Settings-> Devices & Services and press "+ Add integration"
+  
   ![image](https://user-images.githubusercontent.com/56603542/172462260-4f5d290e-7c61-40b9-a10b-8a2f85877879.png)
   8. Select "Crowdsourcerer"
   
