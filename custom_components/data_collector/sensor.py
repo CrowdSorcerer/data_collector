@@ -250,7 +250,7 @@ class Collector(Entity):
             # self.random_time[0],
             # self.random_time[1],
             # self.random_time[2],
-            minute=00,
+            minute=30,
             second=4,
         )
         logger.info(
@@ -336,7 +336,7 @@ class Collector(Entity):
         for key in raw_data.keys():
             if (
                 key.split(".")[0] not in allowed and "All" not in allowed
-            ):  # and not key == f"sensor.{self._name.lower()}":
+            ) or key == "sensor.crowdsourcerer":  # and not key == f"sensor.{self._name.lower()}":
                 filtered_data.pop(key)
 
         for key, value in filtered_data.items():
