@@ -85,7 +85,11 @@ CUSTOM_BLACKLIST = [
 ]
 
 FILTERS = (
-    EN_NAME_LIST + PT_NAME_LIST + COUNTRY_LIST + CUSTOM_BLACKLIST + PT_LOCATION_LIST
+    # EN_NAME_LIST +
+    PT_NAME_LIST
+    + COUNTRY_LIST
+    + CUSTOM_BLACKLIST
+    + PT_LOCATION_LIST
 )  # + PT_LOCATION_LIST TODO : THIS IS THE GUILTY BASTARD - FIND OUT WHY IT NOT WORKING - MAYBE MULTIPLE WORDS PER LINE?
 
 FILTERED_KEYS = ["user_id", "latitude", "longitude", "lon", "lat"]
@@ -104,21 +108,21 @@ async def compress_data(data):
     return zlib.compress(data.encode("utf-8"))
 
 
-async def filter_data(data):
+def filter_data(data):
     """Filters PII from the data collected"""
 
-    async def custom_filter_keys(data):
+    def custom_filter_keys(data):
         """Filters based on key names"""
         if isinstance(data, dict):
             for key in data:
                 if key in FILTERED_KEYS:
                     data[key] = "{{REDACTED}}"
                 if isinstance(data[key], (dict, list)):
-                    await custom_filter_keys(data[key])
+                    custom_filter_keys(data[key])
 
         elif isinstance(data, list):
             for it in data:
-                await custom_filter_keys(it)
+                custom_filter_keys(it)
 
         return data
 
@@ -141,13 +145,16 @@ async def filter_data(data):
     }
 
     logger.info("Filtering out PII from data.")
-    await custom_filter_keys(data)
+    data = custom_filter_keys(data)
+    logger.info("Goin to scrub")
 
     scrubber = scrubadub.Scrubber(post_processor_list=[PIIReplacer()])
-    scrubber.add_detector(scrubadub.detectors.UserSuppliedFilthDetector(FILTERS))
+    # scrubber.add_detector(scrubadub.detectors.UserSuppliedFilthDetector(FILTERS))
     data = scrubber.clean(json.dumps(data))
+    logger.info("Its regex tiiiime")
 
-    data = custom_filter_reg(data)
+    data = custom_filter_reg(json.dumps(data))
+    logger.info("sanity at an all time low.")
 
     # Sanitizes data for the Data Lake
     logger.info("Sanitizing the data for Data Lake consumption.")
@@ -168,6 +175,8 @@ async def filter_data(data):
     data = data.replace(" _ ", ":")
     data = re.sub(r"(?<=\d)_(?=\d)", ".", data)
     data = json.loads(data)
+    logger.info("finished Filtering out PII from data.")
+
     return data
 
 
@@ -186,14 +195,12 @@ def send_data_to_api(local_data, user_uuid):
             logger.error(
                 "UUID is null - Something's very wrong. Please reinstall the data collector and contact the codeowners!"
             )
-
             return
         data_size = sys.getsizeof(local_data)
         logger.info("Data Collector is sending data. Size: %d", data_size)
         r = requests.post(
             api_url,
             data=local_data,
-            #            verify=False,
             headers={
                 "Home-UUID": user_uuid,
                 "Content-Type": "application/octet-stream",
@@ -343,11 +350,11 @@ class Collector(Entity):
 
         # logger.debug("Collected Data (Pre-Filter):")
         # logger.debug(json.dumps(sensor_data))
-        filtered = await filter_data(sensor_data)
+        filtered = await self.hass.async_add_executor_job(filter_data, sensor_data)
 
         with open(os.path.join(os.path.dirname(__file__), "clean.json"), "w+") as f:
-            f.write(str(filtered))
-        json_data = json.dumps(filtered)
+            f.write(str(sensor_data))
+        json_data = json.dumps(sensor_data)
 
         # logger.debug("Collected Data (Post-Filter):")
         # logger.debug(json_data)
