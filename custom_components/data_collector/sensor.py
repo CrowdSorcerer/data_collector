@@ -30,11 +30,10 @@ from homeassistant.helpers.event import (
     async_track_time_change,
 )
 
-from .const import API_URL, TIME_INTERVAL, logger
+from .const import API_URL, logger
 
 _LOGGER = logging.getLogger(__name__)
 
-SCAN_INTERVAL = timedelta(seconds=TIME_INTERVAL)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({})
 PT_NAME_LIST = [
@@ -241,10 +240,10 @@ class Collector(Entity):
         schedule = async_track_time_change(
             self.hass,
             self.async_collect_data,
-            self.random_time[0],
-            self.random_time[1],
-            self.random_time[2],
-            # second=40,
+            # self.random_time[0],
+            # self.random_time[1],
+            # self.random_time[2],
+            second=40,
         )
         logger.info(
             "Data Collector will run at %dh %dmin %ds",
