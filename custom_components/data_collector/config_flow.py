@@ -110,7 +110,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             #    DOMAIN
             # ):
             user_input["uuid"] = str(uuid.uuid4())
-            logger.info(f"user input: {user_input}")
+            # logger.info(f"user input: {user_input}")
 
             # self.hass.data[DOMAIN]["UUID"] = uuid.uuid4()
             return self.async_create_entry(title="options", data=user_input)
@@ -188,9 +188,9 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
         for entry in entries:
             entry = entry.as_dict()
             if entry["domain"] == "data_collector" and entry["title"] == "options":
-                logger.info(entry)
+                # logger.info(entry)
                 for category in entry["data"]:
-                    logger.info("%s:%s", category, entry["data"][category])
+                    # logger.info("%s:%s", category, entry["data"][category])
                     if entry["data"][category]:
                         prev_config.append(category)
                 break

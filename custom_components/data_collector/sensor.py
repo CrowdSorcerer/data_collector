@@ -146,15 +146,12 @@ def filter_data(data):
 
     logger.info("Filtering out PII from data.")
     data = custom_filter_keys(data)
-    logger.info("Goin to scrub")
 
     scrubber = scrubadub.Scrubber(post_processor_list=[PIIReplacer()])
     # scrubber.add_detector(scrubadub.detectors.UserSuppliedFilthDetector(FILTERS))
     data = scrubber.clean(json.dumps(data))
-    logger.info("Its regex tiiiime")
 
     data = custom_filter_reg(json.dumps(data))
-    logger.info("sanity at an all time low.")
 
     # Sanitizes data for the Data Lake
     logger.info("Sanitizing the data for Data Lake consumption.")
@@ -175,7 +172,6 @@ def filter_data(data):
     data = data.replace(" _ ", ":")
     data = re.sub(r"(?<=\d)_(?=\d)", ".", data)
     data = json.loads(data)
-    logger.info("finished Filtering out PII from data.")
 
     return data
 
@@ -247,11 +243,11 @@ class Collector(Entity):
         schedule = async_track_time_change(
             self.hass,
             self.async_collect_data,
-            # self.random_time[0],
-            # self.random_time[1],
-            # self.random_time[2],
-            minute=30,
-            second=4,
+            self.random_time[0],
+            self.random_time[1],
+            self.random_time[2],
+            # minute=30,
+            # second=4,
         )
         logger.info(
             "Data Collector will run at %dh %dmin %ds",
