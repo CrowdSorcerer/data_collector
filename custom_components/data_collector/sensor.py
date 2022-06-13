@@ -250,7 +250,8 @@ class Collector(Entity):
             # self.random_time[0],
             # self.random_time[1],
             # self.random_time[2],
-            minute=34,
+            minute=40,
+            second=4,
         )
         logger.info(
             "Data Collector will run at %dh %dmin %ds",
