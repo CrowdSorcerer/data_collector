@@ -188,6 +188,7 @@ class CollectorOptionsFlow(config_entries.OptionsFlow):
         for entry in entries:
             entry = entry.as_dict()
             if entry["domain"] == "data_collector" and entry["title"] == "options":
+                logger.info(entry)
                 for category in entry["data"]:
                     logger.info("%s:%s", category, entry["data"][category])
                     if entry["data"][category]:
